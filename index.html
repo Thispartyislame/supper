@@ -238,7 +238,7 @@ textarea.input{min-height:150px;resize:vertical;line-height:1.5}
 .sync-dot.ok{background:var(--accent)}.sync-dot.err{background:var(--danger)}
 .notice{background:color-mix(in srgb,#f5b301 18%,var(--card));border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.45;margin:12px 0}
 .notice b{display:block;margin-bottom:2px}
-.codebox{font:600 15px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);border-radius:12px;padding:12px 14px;word-break:break-all;user-select:all;-webkit-user-select:all}
+.codebox{font:600 15px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--card);box-shadow:var(--shadow);border-radius:12px;padding:12px 14px;word-break:break-all;user-select:all;-webkit-user-select:all}
 </style>
 </head>
 <body>
@@ -722,6 +722,7 @@ function sheetHTML(s){
   if(s.type==='diet')return sheetDiet(s);
   if(s.type==='sync-start')return sheetSyncStart(s);
   if(s.type==='sync-join')return sheetSyncJoin(s);
+  if(s.type==='sync-invite')return sheetSyncInvite(s);
   return '';
 }
 function topBar(title,right='',label='Back'){return `<div class="sheet-top"><button class="back" data-act="close">${ic.back}${label}</button><div class="title">${esc(title||'')}</div>${right||'<span style="width:60px"></span>'}</div>`;}
@@ -814,10 +815,17 @@ function sheetSyncStart(s){
     <p class="muted small" style="margin:-4px 2px 18px">Everything on this phone (recipes, meal plan and grocery list) becomes the household's starting point. You'll get an invite to send to the other person.</p>
     <button class="btn primary" data-act="sync-create" ${s.busy?'disabled style="opacity:.6"':''}>${s.busy?'Connecting…':'Create household'}</button></div>`;
 }
+function sheetSyncInvite(){
+  return topBar('Invite someone','','Done')+`<div class="pad">
+    <p style="margin:6px 0 14px">Send this invite to someone in your household. They paste it into <b>Settings → Household sync → Join a household</b> in their Supper app.</p>
+    <div class="codebox" style="margin-bottom:16px">${esc(inviteToken())}</div>
+    <div class="stack"><button class="btn primary" data-act="invite-share">Share invite</button><button class="btn secondary" data-act="invite-copy">Copy invite</button></div>
+    <div class="notice"><b>Treat this like a password</b>Anyone with it can see and change your household's recipes, meal plan and grocery list.</div></div>`;
+}
 function sheetSyncJoin(s){
   return topBar('Join a household','','Cancel')+`<div class="pad">
-    <p style="margin:6px 0 14px">Paste the invite you were sent. It includes the server address and a code like <b>K7Q2-9XMP-4RTD-HW3C</b>.</p>
-    <label class="field"><span>Invite</span><textarea class="input" id="syncInvite" style="min-height:110px" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://supper-sync.yourname.workers.dev/#K7Q2-9XMP-4RTD-HW3C">${esc(s.invite||'')}</textarea></label>
+    <p style="margin:6px 0 14px">Paste the invite you were sent. It's fine to paste the whole message; the part that matters starts with <b>SUPPER1-</b>.</p>
+    <label class="field"><span>Invite</span><textarea class="input" id="syncInvite" style="min-height:110px" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="SUPPER1-…">${esc(s.invite||'')}</textarea></label>
     <div class="notice"><b>What happens to what's on this phone</b>Your recipes are added to the household. The meal plan and grocery list on this phone are replaced by the household's.</div>
     <button class="btn primary" data-act="sync-join-go" ${s.busy?'disabled style="opacity:.6"':''}>${s.busy?'Connecting…':'Join household'}</button></div>`;
 }
@@ -1070,9 +1078,16 @@ async function createHousehold(){
   if(sync.error){toast('Household created, but the first sync failed: '+syncErrorText());}
   else setTimeout(shareInvite,300);
 }
+function b64url(str){return btoa(unescape(encodeURIComponent(str))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');}
+function unb64url(str){str=str.replace(/-/g,'+').replace(/_/g,'/');while(str.length%4)str+='=';return decodeURIComponent(escape(atob(str)));}
+function inviteToken(){return 'SUPPER1-'+b64url(serverUrl().replace(/^https:\/\//,'')+'|'+sync.code);}
 function parseInvite(text){
-  const code=(String(text).toUpperCase().match(/[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}/)||[])[0];
-  const url=(String(text).match(/https?:\/\/[^\s#]+/i)||[])[0];
+  text=String(text||'');
+  const tok=text.match(/SUPPER1-([A-Za-z0-9_-]{10,})/);
+  if(tok){try{const [u,c]=unb64url(tok[1]).split('|');if(u&&c)return {url:normalizeUrl(u),code:c.toUpperCase()};}catch(e){}}
+  // older invites: a web address followed by #CODE, or a server name and code pasted separately
+  const code=(text.toUpperCase().match(/[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}/)||[])[0];
+  const url=(text.match(/https?:\/\/[^\s#]+/i)||text.match(/\b[a-z0-9-]+(?:\.[a-z0-9-]+)*\.workers\.dev\b/i)||[])[0];
   return {code,url:url?normalizeUrl(url):''};
 }
 async function joinHousehold(){
@@ -1087,12 +1102,16 @@ async function joinHousehold(){
   closeSheet();await syncNow();refresh();
   toast(sync.error?'Joined, but couldn\'t sync yet: '+syncErrorText():'Joined your household 🎉');
 }
-function inviteText(){return `Join our Supper household! In Supper, go to Settings → Household sync → Join a household, and paste this:\n\n${serverUrl()}/#${sync.code}`;}
-async function shareInvite(){
+function inviteText(){return `Join our Supper household! Copy this whole message, then in Supper go to Settings → Household sync → Join a household and paste it.\n\n${inviteToken()}`;}
+function shareInvite(){openSheet({type:'sync-invite'});}
+async function shareInviteNow(){
   const text=inviteText();
-  try{if(navigator.share){await navigator.share({title:'Supper household invite',text});return;}}catch(e){if(e&&e.name==='AbortError')return;}
-  try{await navigator.clipboard.writeText(text);toast('Invite copied. Paste it into a text message');}
-  catch(e){actionSheet('Send this to the other person: '+serverUrl()+'/#'+sync.code,[]);}
+  try{if(navigator.share){await navigator.share({text});return;}}catch(e){if(e&&e.name==='AbortError')return;}
+  copyInvite();
+}
+async function copyInvite(){
+  try{await navigator.clipboard.writeText(inviteText());toast('Invite copied. Paste it into a text message');}
+  catch(e){toast('Press and hold the invite code to copy it');}
 }
 function leaveHousehold(){clearTimeout(syncT);sync=freshSync();saveSync();lastP=null;}
 setInterval(()=>{if(syncOn()&&!document.hidden)syncNow();updateSyncStatus();},5000);
@@ -1158,6 +1177,8 @@ document.addEventListener('click',async e=>{
     case 'sync-create':createHousehold();break;
     case 'sync-join-go':joinHousehold();break;
     case 'sync-invite':shareInvite();break;
+    case 'invite-share':shareInviteNow();break;
+    case 'invite-copy':copyInvite();break;
     case 'sync-now':syncNow().then(()=>toast(sync.error?'Couldn\'t sync — '+syncErrorText():'Up to date'));break;
     case 'sync-leave':confirmSheet('Stop syncing on this device? Everything stays on this phone, but changes will no longer be shared. You can rejoin later with an invite.','Stop syncing',()=>{leaveHousehold();refresh();toast('Sync turned off on this device');});break;
     case 'import':$('#importFile').click();break;
