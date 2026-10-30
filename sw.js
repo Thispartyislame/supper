@@ -1,5 +1,5 @@
 // Offline cache. Bump VERSION whenever you change any file so phones pick up the update.
-const VERSION = 'supper-v3';
+const VERSION = 'supper-v4';
 const FILES = ['./', './index.html', './manifest.webmanifest', './icons/icon-180.png', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(VERSION).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));

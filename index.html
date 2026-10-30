@@ -226,6 +226,7 @@ textarea.input{min-height:150px;resize:vertical;line-height:1.5}
 .switch.on{background:var(--accent)}
 .switch.on::after{left:22px}
 .chev{color:var(--muted);width:18px;height:18px}
+.set-row>svg{width:20px;height:20px;flex:none;color:var(--muted)}
 .tagin{display:flex;gap:8px;margin-top:10px}
 .tagin input{flex:1}
 .emoji-pick{display:flex;flex-wrap:wrap;gap:6px}
@@ -233,6 +234,11 @@ textarea.input{min-height:150px;resize:vertical;line-height:1.5}
 .emoji-pick button.on{border-color:var(--accent)}
 .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .help li{margin-bottom:8px}
+.sync-dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--muted);margin-right:6px;vertical-align:1px}
+.sync-dot.ok{background:var(--accent)}.sync-dot.err{background:var(--danger)}
+.notice{background:color-mix(in srgb,#f5b301 18%,var(--card));border-radius:14px;padding:12px 14px;font-size:14px;line-height:1.45;margin:12px 0}
+.notice b{display:block;margin-bottom:2px}
+.codebox{font:600 15px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);border-radius:12px;padding:12px 14px;word-break:break-all;user-select:all;-webkit-user-select:all}
 </style>
 </head>
 <body>
@@ -459,7 +465,10 @@ function defaults(){return {v:1,prefs:{diet:'classic',allergies:[],dislikes:[],s
   custom:[],hidden:[],favorites:[],plan:[],grocery:{checked:{},custom:[],removed:{},cleared:[]},lastBackup:null};}
 let state=defaults();
 try{const raw=localStorage.getItem(STORE_KEY);if(raw){const s=JSON.parse(raw);state=Object.assign(defaults(),s);state.prefs=Object.assign(defaults().prefs,s.prefs||{});state.grocery=Object.assign(defaults().grocery,s.grocery||{});}}catch(e){}
-function save(){try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}catch(e){toast('Could not save — storage is full or blocked');}}
+function normalize(){state.plan.forEach((e,i)=>{if(!e.added)e.added=1+i;});if(!Array.isArray(state.grocery.cleared))state.grocery.cleared=[];}
+normalize();
+function persist(){try{localStorage.setItem(STORE_KEY,JSON.stringify(state));}catch(e){toast('Could not save — storage is full or blocked');}}
+function save(){persist();if(typeof markDirty==='function')markDirty();}
 try{if(navigator.storage&&navigator.storage.persist)navigator.storage.persist();}catch(e){}
 
 const ui={tab:'plan',filter:'all',q:'',showAll:false,obStep:0,stapleOpen:false,cookIng:false};
@@ -477,7 +486,7 @@ const inPlan=id=>state.plan.find(e=>e.id===id);
 const isFav=id=>state.favorites.includes(id);
 
 /* ================= mutations ================= */
-function addToPlan(id,servings){if(inPlan(id))return;state.grocery.cleared=(state.grocery.cleared||[]).filter(x=>x!==id);state.plan.push({id,servings:servings||state.prefs.servings,cooked:false});state.grocery.removed={};save();}
+function addToPlan(id,servings){if(inPlan(id))return;state.grocery.cleared=(state.grocery.cleared||[]).filter(x=>x!==id);state.plan.push({id,servings:servings||state.prefs.servings,cooked:false,added:Date.now()});state.grocery.removed={};save();}
 function removeFromPlan(id){state.plan=state.plan.filter(e=>e.id!==id);state.grocery.cleared=(state.grocery.cleared||[]).filter(x=>x!==id);state.grocery.removed={};save();}
 function togglePlan(id,servings){if(inPlan(id)){removeFromPlan(id);toast('Removed from plan');}else{addToPlan(id,servings);toast('Added to your meal plan');}refresh();}
 function toggleFav(id){const i=state.favorites.indexOf(id);if(i>=0)state.favorites.splice(i,1);else state.favorites.push(id);save();refresh();}
@@ -675,12 +684,22 @@ function viewSettings(){
     <button class="set-row" data-act="paste"><span>Paste a recipe from a website</span><span class="sp"></span>${ic.chev}</button>
     ${hiddenN?`<button class="set-row" data-act="unhide"><span>Restore ${hiddenN} hidden starter recipe${hiddenN>1?'s':''}</span><span class="sp"></span>${ic.chev}</button>`:''}
   </div>
+  <div class="section-t">Household sync</div>
+  ${syncOn()?`<div class="set-group">
+    <div class="set-row"><span>Status<br><span class="muted small" id="syncStatus">${syncStatusHTML()}</span></span></div>
+    <button class="set-row" data-act="sync-invite"><span>Invite someone to this household</span><span class="sp"></span>${ic.share}</button>
+    <button class="set-row" data-act="sync-now"><span>Sync now</span><span class="sp"></span>${ic.chev}</button>
+    <button class="set-row" data-act="sync-leave"><span style="color:var(--danger)">Stop syncing on this device</span></button>
+  </div>
+  <p class="muted small" style="margin:8px 4px 0">Recipes, the meal plan and the grocery list are shared. Favorites and food preferences stay separate on each phone.</p>`
+  :`<div class="card"><p>Share recipes, the meal plan and the grocery list with someone in your household. Changes show up on their phone within a few seconds.</p>
+    <div class="stack" style="margin-top:14px"><button class="btn primary" data-act="sync-start">Start a household</button><button class="btn secondary" data-act="sync-join">Join a household</button></div></div>`}
   <div class="section-t">Backup</div>
   <div class="set-group">
     <button class="set-row" data-act="export"><span>Export backup file<br><span class="muted small">${state.lastBackup?'Last backup '+new Date(state.lastBackup).toLocaleDateString():'Never backed up'}</span></span><span class="sp"></span>${ic.share}</button>
     <button class="set-row" data-act="import"><span>Restore from backup file</span><span class="sp"></span>${ic.chev}</button>
   </div>
-  <p class="muted small" style="margin:8px 4px 0">Everything is stored only on this device. Export a backup now and then, especially before switching phones.</p>
+  <p class="muted small" style="margin:8px 4px 0">${syncOn()?'Your data is kept on this device and on your sync server.':'Everything is stored only on this device.'} Export a backup now and then, especially before switching phones.</p>
   ${standalone?'':`<div class="section-t">Install on iPhone</div><div class="card"><ol class="help" style="margin:0;padding-left:20px"><li>Open this page in <b>Safari</b>.</li><li>Tap the <b>Share</b> button.</li><li>Choose <b>Add to Home Screen</b>.</li></ol><p class="muted small">It then opens full-screen like an app and works offline.</p></div>`}
   <div class="section-t">Danger zone</div>
   <button class="btn danger" data-act="reset">Erase all data</button>
@@ -701,6 +720,8 @@ function sheetHTML(s){
   if(s.type==='edit')return sheetEdit(s);
   if(s.type==='paste')return sheetPaste(s);
   if(s.type==='diet')return sheetDiet(s);
+  if(s.type==='sync-start')return sheetSyncStart(s);
+  if(s.type==='sync-join')return sheetSyncJoin(s);
   return '';
 }
 function topBar(title,right='',label='Back'){return `<div class="sheet-top"><button class="back" data-act="close">${ic.back}${label}</button><div class="title">${esc(title||'')}</div>${right||'<span style="width:60px"></span>'}</div>`;}
@@ -785,6 +806,20 @@ function sheetPaste(){
   return topBar('Paste a recipe','','Cancel')+`<div class="pad"><p class="muted" style="margin:6px 0 14px">Copy a recipe from a website, notes or a message and paste it below. Include the title, ingredients and steps; you can fix anything on the next screen.</p>
     <textarea class="input" id="pasteBox" style="min-height:320px" placeholder="Grandma's Chili&#10;Serves 6&#10;&#10;Ingredients&#10;1 lb ground beef&#10;1 onion, diced&#10;2 cans kidney beans&#10;&#10;Instructions&#10;Brown the beef with the onion, about 8 minutes.&#10;..."></textarea>
     <div style="height:14px"></div><button class="btn primary" data-act="parse-paste">Continue</button></div>`;
+}
+function sheetSyncStart(s){
+  return topBar('Start a household','','Cancel')+`<div class="pad">
+    <p style="margin:6px 0 14px">Paste the address of your sync server. It's the Cloudflare Worker address from the setup guide and looks like <b>https://supper-sync.yourname.workers.dev</b>.</p>
+    <label class="field"><span>Sync server address</span><input class="input" id="syncUrl" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://supper-sync.yourname.workers.dev" value="${esc(s.url||'')}"></label>
+    <p class="muted small" style="margin:-4px 2px 18px">Everything on this phone (recipes, meal plan and grocery list) becomes the household's starting point. You'll get an invite to send to the other person.</p>
+    <button class="btn primary" data-act="sync-create" ${s.busy?'disabled style="opacity:.6"':''}>${s.busy?'Connecting…':'Create household'}</button></div>`;
+}
+function sheetSyncJoin(s){
+  return topBar('Join a household','','Cancel')+`<div class="pad">
+    <p style="margin:6px 0 14px">Paste the invite you were sent. It includes the server address and a code like <b>K7Q2-9XMP-4RTD-HW3C</b>.</p>
+    <label class="field"><span>Invite</span><textarea class="input" id="syncInvite" style="min-height:110px" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://supper-sync.yourname.workers.dev/#K7Q2-9XMP-4RTD-HW3C">${esc(s.invite||'')}</textarea></label>
+    <div class="notice"><b>What happens to what's on this phone</b>Your recipes are added to the household. The meal plan and grocery list on this phone are replaced by the household's.</div>
+    <button class="btn primary" data-act="sync-join-go" ${s.busy?'disabled style="opacity:.6"':''}>${s.busy?'Connecting…':'Join household'}</button></div>`;
 }
 function sheetDiet(){
   return topBar('Diet','','Done')+`<div class="pad">${dietOptions()}</div>`;
@@ -903,11 +938,166 @@ async function exportBackup(){
 $('#importFile').addEventListener('change',e=>{
   const f=e.target.files[0];if(!f)return;const rd=new FileReader();
   rd.onload=()=>{try{const o=JSON.parse(rd.result);const s=o.state||o;if(!s.prefs||!Array.isArray(s.plan))throw 0;
-    confirmSheet('Replace everything on this device with the backup from '+(o.exported?new Date(o.exported).toLocaleDateString():'this file')+'?','Restore backup',()=>{
-      state=Object.assign(defaults(),s);state.prefs=Object.assign(defaults().prefs,s.prefs);state.grocery=Object.assign(defaults().grocery,s.grocery||{});save();refresh();renderOb();toast('Backup restored');});
+    confirmSheet('Replace everything on this device with the backup from '+(o.exported?new Date(o.exported).toLocaleDateString():'this file')+'?'+(syncOn()?' Your household will be updated to match.':''),'Restore backup',()=>{
+      state=Object.assign(defaults(),s);state.prefs=Object.assign(defaults().prefs,s.prefs);state.grocery=Object.assign(defaults().grocery,s.grocery||{});normalize();save();refresh();renderOb();toast('Backup restored');});
   }catch(err){toast("That file isn't a Supper backup");}e.target.value='';};
   rd.readAsText(f);
 });
+
+/* ================= household sync ================= */
+// Each shared thing is one record keyed like "r:<recipe id>" or "gc:<grocery key>".
+// The phone remembers the last version it agreed on with the server ("base")
+// and when each record was last changed here ("dirty"), pushes what differs,
+// and pulls what others changed. The most recent change to a record wins.
+var SYNC_STORE='supper.sync.v1';
+var CODE_ALPHA='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function freshSync(){return {url:'',code:'',since:0,base:{},dirty:{},lastOk:0,error:''};}
+var sync=freshSync();
+try{const r=localStorage.getItem(SYNC_STORE);if(r)sync=Object.assign(freshSync(),JSON.parse(r));}catch(e){}
+function saveSync(){try{localStorage.setItem(SYNC_STORE,JSON.stringify(sync));}catch(e){}}
+function syncOn(){return !!(sync.url&&sync.code);}
+var lastP=null,syncBusy=false,syncAgain=false,syncT=null,pendingRender=false;
+
+function projection(){
+  const P={};const g=state.grocery;
+  for(const r of state.custom)P['r:'+r.id]=JSON.stringify(r);
+  for(const id of state.hidden)P['h:'+id]='1';
+  for(const e of state.plan)P['p:'+e.id]=JSON.stringify({s:e.servings,c:!!e.cooked,a:e.added||0});
+  for(const k in g.checked)if(g.checked[k])P['gc:'+k]='1';
+  for(const c of g.custom)P['gi:'+c.id]=JSON.stringify({n:c.name,a:c.aisle});
+  for(const k in g.removed)if(g.removed[k])P['gr:'+k]='1';
+  for(const id of (g.cleared||[]))P['gx:'+id]='1';
+  return P;
+}
+function applyProjection(P){
+  const pick=pre=>Object.keys(P).filter(k=>k.startsWith(pre)).map(k=>[k.slice(pre.length),P[k]]);
+  const keepOrder=(oldIds,newIds)=>{const set=new Set(newIds);const out=oldIds.filter(i=>set.has(i));const seen=new Set(out);for(const i of newIds.slice().sort())if(!seen.has(i))out.push(i);return out;};
+  const rec={};for(const [id,v] of pick('r:')){try{rec[id]=JSON.parse(v);}catch(e){}}
+  state.custom=keepOrder(state.custom.map(r=>r.id),Object.keys(rec)).map(id=>rec[id]);
+  state.hidden=keepOrder(state.hidden,pick('h:').map(x=>x[0]));
+  const plan=[];for(const [id,v] of pick('p:')){try{const o=JSON.parse(v);plan.push({id,servings:o.s,cooked:!!o.c,added:o.a||0});}catch(e){}}
+  plan.sort((a,b)=>a.added-b.added||a.id.localeCompare(b.id));state.plan=plan;
+  const g=state.grocery;
+  g.checked=Object.fromEntries(pick('gc:').map(([k])=>[k,true]));
+  const items={};for(const [id,v] of pick('gi:')){try{const o=JSON.parse(v);items[id]={id,name:o.n,aisle:o.a};}catch(e){}}
+  g.custom=keepOrder(g.custom.map(c=>c.id),Object.keys(items)).map(id=>items[id]);
+  g.removed=Object.fromEntries(pick('gr:').map(([k])=>[k,true]));
+  g.cleared=pick('gx:').map(x=>x[0]);
+}
+function markDirty(){
+  if(!syncOn())return;
+  const P=projection();const now=Date.now();
+  if(lastP){for(const k of new Set([...Object.keys(P),...Object.keys(lastP)]))if(P[k]!==lastP[k])sync.dirty[k]=now;}
+  lastP=P;saveSync();scheduleSync(600);
+}
+function scheduleSync(ms){clearTimeout(syncT);syncT=setTimeout(syncNow,ms);}
+function setBase(k,v){if(v==null)delete sync.base[k];else sync.base[k]=v;}
+function serverUrl(){return sync.url.replace(/\/+$/,'');}
+async function syncNow(){
+  if(!syncOn())return;
+  if(syncBusy){syncAgain=true;return;}
+  syncBusy=true;let changed=false;
+  try{
+    for(let round=0;round<50;round++){
+      const P=projection();const ops=[];
+      for(const k of new Set([...Object.keys(P),...Object.keys(sync.base)])){
+        if(P[k]!==sync.base[k]){ops.push({k,v:P[k]??null,mt:sync.dirty[k]||Date.now()});if(ops.length>=80)break;}
+      }
+      const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),15000);
+      let res;
+      try{res=await fetch(serverUrl()+'/sync',{method:'POST',headers:{'content-type':'text/plain;charset=UTF-8'},body:JSON.stringify({code:sync.code,since:sync.since,ops}),cache:'no-store',signal:ctl.signal});}
+      finally{clearTimeout(to);}
+      const data=await res.json().catch(()=>null);
+      if(!res.ok||!data||!data.ok)throw new Error((data&&data.error)||('server error '+res.status));
+      const rows=new Map();
+      for(const r of [...(data.echo||[]),...(data.changes||[])]){const p=rows.get(r.k);if(!p||r.seq>p.seq)rows.set(r.k,r);}
+      const cur=projection();let applied=false;
+      for(const r of rows.values()){
+        const v=r.v==null?undefined:r.v;
+        if(cur[r.k]===v){setBase(r.k,v);delete sync.dirty[r.k];}
+        else if(sync.dirty[r.k]&&sync.dirty[r.k]>r.mt){setBase(r.k,v);} // a newer edit here hasn't been sent yet
+        else{if(v===undefined)delete cur[r.k];else cur[r.k]=v;setBase(r.k,v);delete sync.dirty[r.k];applied=true;}
+      }
+      sync.since=data.cursor;sync.lastOk=Date.now();sync.error='';
+      if(applied){applyProjection(cur);persist();lastP=projection();changed=true;}
+      saveSync();
+      if(!data.more&&ops.length<80)break;
+    }
+  }catch(e){
+    sync.error=(navigator.onLine===false||e.name==='AbortError'||e instanceof TypeError)?'offline':String(e.message||e);saveSync();
+  }finally{
+    syncBusy=false;
+    if(changed)syncRefresh();else updateSyncStatus();
+    if(syncAgain){syncAgain=false;scheduleSync(300);}
+  }
+}
+function isTyping(){const a=document.activeElement;return a&&/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName);}
+function syncRefresh(){
+  const t=topSheet();
+  if(isTyping()||(t&&(t.type==='edit'||t.type==='paste'||t.type==='sync-start'||t.type==='sync-join'))){pendingRender=true;renderBadgeOnly();return;}
+  pendingRender=false;refresh();
+}
+function renderBadgeOnly(){try{updateBadge();}catch(e){}}
+document.addEventListener('focusout',()=>{if(pendingRender)setTimeout(()=>{const t=topSheet();if(pendingRender&&!isTyping()&&!(t&&(t.type==='edit'||t.type==='paste')))syncRefresh();},80);});
+function syncErrorText(){return sync.error==='offline'?'no connection':sync.error;}
+function ago(ms){const s=Math.round((Date.now()-ms)/1000);if(s<15)return 'just now';if(s<60)return s+' seconds ago';const m=Math.round(s/60);if(m<60)return m+' minute'+(m>1?'s':'')+' ago';const h=Math.round(m/60);if(h<24)return h+' hour'+(h>1?'s':'')+' ago';return new Date(ms).toLocaleDateString();}
+function syncStatusHTML(){
+  const pending=Object.keys(sync.dirty).length;
+  if(sync.error==='offline')return `<span class="sync-dot"></span>Offline. ${pending?'Your changes will sync':'Will sync'} when you're back online.`;
+  if(sync.error)return `<span class="sync-dot err"></span>Can't reach the sync server (${esc(sync.error)}).`;
+  if(!sync.lastOk)return '<span class="sync-dot"></span>Connecting…';
+  return `<span class="sync-dot ok"></span>Synced ${ago(sync.lastOk)}`;
+}
+function updateSyncStatus(){const el=document.getElementById('syncStatus');if(el)el.innerHTML=syncStatusHTML();}
+function newCode(){const b=new Uint8Array(16);crypto.getRandomValues(b);let c='';for(let i=0;i<16;i++){c+=CODE_ALPHA[b[i]%32];if(i%4===3&&i<15)c+='-';}return c;}
+function normalizeUrl(u){u=String(u||'').trim().replace(/#.*$/,'').replace(/\/+$/,'');if(u&&!/^https?:\/\//i.test(u))u='https://'+u;return u;}
+async function testServer(url){
+  try{const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),12000);
+    const r=await fetch(url+'/',{cache:'no-store',signal:ctl.signal});clearTimeout(to);const d=await r.json();
+    if(d&&d.ok&&d.app==='supper-sync')return '';
+    return (d&&d.error)||'That address isn\'t a Supper sync server.';
+  }catch(e){return 'Couldn\'t reach that address. Check it and your connection.';}
+}
+async function createHousehold(){
+  const s=topSheet();const url=normalizeUrl($('#syncUrl').value);s.url=url;
+  if(!url){toast('Paste your sync server address');return;}
+  s.busy=true;renderSheets();
+  const err=await testServer(url);
+  s.busy=false;
+  if(err){renderSheets();toast(err);return;}
+  sync=freshSync();sync.url=url;sync.code=newCode();lastP=projection();saveSync();
+  closeSheet();await syncNow();refresh();
+  if(sync.error){toast('Household created, but the first sync failed: '+syncErrorText());}
+  else setTimeout(shareInvite,300);
+}
+function parseInvite(text){
+  const code=(String(text).toUpperCase().match(/[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}-[A-HJ-NP-Z2-9]{4}/)||[])[0];
+  const url=(String(text).match(/https?:\/\/[^\s#]+/i)||[])[0];
+  return {code,url:url?normalizeUrl(url):''};
+}
+async function joinHousehold(){
+  const s=topSheet();s.invite=$('#syncInvite').value;const inv=parseInvite(s.invite);
+  if(!inv.url||!inv.code){toast('That doesn\'t look like a complete invite');return;}
+  s.busy=true;renderSheets();
+  const err=await testServer(inv.url);
+  s.busy=false;
+  if(err){renderSheets();toast(err);return;}
+  state.plan=[];state.grocery=defaults().grocery;persist();
+  sync=freshSync();sync.url=inv.url;sync.code=inv.code;lastP=projection();saveSync();
+  closeSheet();await syncNow();refresh();
+  toast(sync.error?'Joined, but couldn\'t sync yet: '+syncErrorText():'Joined your household 🎉');
+}
+function inviteText(){return `Join our Supper household! In Supper, go to Settings → Household sync → Join a household, and paste this:\n\n${serverUrl()}/#${sync.code}`;}
+async function shareInvite(){
+  const text=inviteText();
+  try{if(navigator.share){await navigator.share({title:'Supper household invite',text});return;}}catch(e){if(e&&e.name==='AbortError')return;}
+  try{await navigator.clipboard.writeText(text);toast('Invite copied. Paste it into a text message');}
+  catch(e){actionSheet('Send this to the other person: '+serverUrl()+'/#'+sync.code,[]);}
+}
+function leaveHousehold(){clearTimeout(syncT);sync=freshSync();saveSync();lastP=null;}
+setInterval(()=>{if(syncOn()&&!document.hidden)syncNow();updateSyncStatus();},5000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&syncOn())scheduleSync(100);});
+window.addEventListener('online',()=>{if(syncOn())scheduleSync(100);});
 
 /* ================= events ================= */
 document.addEventListener('click',async e=>{
@@ -963,8 +1153,15 @@ document.addEventListener('click',async e=>{
     case 'toggle-staples':state.prefs.stapleSection=!state.prefs.stapleSection;save();refresh();break;
     case 'unhide':state.hidden=[];save();refresh();toast('Hidden recipes restored');break;
     case 'export':exportBackup();break;
+    case 'sync-start':openSheet({type:'sync-start',url:''});break;
+    case 'sync-join':openSheet({type:'sync-join',invite:''});break;
+    case 'sync-create':createHousehold();break;
+    case 'sync-join-go':joinHousehold();break;
+    case 'sync-invite':shareInvite();break;
+    case 'sync-now':syncNow().then(()=>toast(sync.error?'Couldn\'t sync — '+syncErrorText():'Up to date'));break;
+    case 'sync-leave':confirmSheet('Stop syncing on this device? Everything stays on this phone, but changes will no longer be shared. You can rejoin later with an invite.','Stop syncing',()=>{leaveHousehold();refresh();toast('Sync turned off on this device');});break;
     case 'import':$('#importFile').click();break;
-    case 'reset':confirmSheet('Erase all recipes, plans, lists and settings on this device?','Erase everything',()=>{state=defaults();save();ui.obStep=0;ui.tab='plan';refresh();renderOb();});break;
+    case 'reset':confirmSheet('Erase all recipes, plans, lists and settings on this device?'+(syncOn()?' This device will leave your household first, so the household\'s data is not affected.':''),'Erase everything',()=>{leaveHousehold();state=defaults();save();ui.obStep=0;ui.tab='plan';refresh();renderOb();});break;
     case 'pick-emoji':{const s=topSheet();readForm(s);s.draft.emoji=el.dataset.e;renderSheets();break;}
     case 'edit-allergen':{const s=topSheet();readForm(s);const a=s.draft.allergens;const k=el.dataset.k;const i=a.indexOf(k);if(i>=0)a.splice(i,1);else a.push(k);renderSheets();break;}
     case 'edit-flag':{const s=topSheet();readForm(s);s.draft[el.dataset.k]=!s.draft[el.dataset.k];renderSheets();break;}
@@ -999,6 +1196,7 @@ async function shareRecipe(r){
 
 /* ================= boot ================= */
 refresh();renderOb();
+if(syncOn()){lastP=projection();scheduleSync(200);}
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{});});}
 </script>
 </body>
