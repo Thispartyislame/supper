@@ -391,7 +391,7 @@ function fmtDur(s){if(s>=3600){const h=Math.floor(s/3600),m=Math.round(s%3600/60
 const AISLE_RULES=[
  ['green bean','produce'],['black pepper','spices'],['red pepper flake','spices'],['bell pepper','produce'],['peanut butter','pantry'],['butter lettuce','produce'],
  ['coconut milk','canned'],['broth','canned'],['stock','canned'],['rice vinegar','oil'],['garlic powder','spices'],['onion powder','spices'],['sweet potato','produce'],['chili powder','spices'],['curry powder','spices'],
- ['frozen','frozen'],['canned','canned'],['crushed tomato','canned'],['diced tomato','canned'],['tomato paste','canned'],['tomato sauce','canned'],['beans','canned'],['chickpea','canned'],['lentil','canned'],['salsa','canned'],['olives','canned'],
+ ['marinara','canned'],['pasta sauce','canned'],['enchilada sauce','canned'],['frozen','frozen'],['canned','canned'],['crushed tomato','canned'],['diced tomato','canned'],['tomato paste','canned'],['tomato sauce','canned'],['beans','canned'],['chickpea','canned'],['lentil','canned'],['salsa','canned'],['olives','canned'],
  ['oregano','spices'],['cumin','spices'],['paprika','spices'],['thyme','spices'],['cinnamon','spices'],['seasoning','spices'],['salt','spices'],['nutmeg','spices'],
  ['shrimp','seafood'],['salmon','seafood'],['cod','seafood'],['tilapia','seafood'],['scallop','seafood'],['fish','seafood'],['tuna','seafood'],
  ['chicken','meat'],['beef','meat'],['steak','meat'],['pork','meat'],['turkey','meat'],['sausage','meat'],['bacon','meat'],['lamb','meat'],['ham','meat'],
@@ -681,7 +681,8 @@ function viewSettings(){
   <div class="section-t">My recipes</div>
   <div class="set-group">
     <button class="set-row" data-act="new-recipe"><span>Create a recipe</span><span class="sp"></span>${ic.chev}</button>
-    <button class="set-row" data-act="paste"><span>Paste a recipe from a website</span><span class="sp"></span>${ic.chev}</button>
+    <button class="set-row" data-act="link"><span>Import a recipe from a link</span><span class="sp"></span>${ic.chev}</button>
+    <button class="set-row" data-act="paste"><span>Paste recipe text</span><span class="sp"></span>${ic.chev}</button>
     ${hiddenN?`<button class="set-row" data-act="unhide"><span>Restore ${hiddenN} hidden starter recipe${hiddenN>1?'s':''}</span><span class="sp"></span>${ic.chev}</button>`:''}
   </div>
   <div class="section-t">Household sync</div>
@@ -720,6 +721,7 @@ function sheetHTML(s){
   if(s.type==='edit')return sheetEdit(s);
   if(s.type==='paste')return sheetPaste(s);
   if(s.type==='diet')return sheetDiet(s);
+  if(s.type==='link')return sheetLink(s);
   if(s.type==='sync-start')return sheetSyncStart(s);
   if(s.type==='sync-join')return sheetSyncJoin(s);
   if(s.type==='sync-invite')return sheetSyncInvite(s);
@@ -828,6 +830,59 @@ function sheetSyncJoin(s){
     <label class="field"><span>Invite</span><textarea class="input" id="syncInvite" style="min-height:110px" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="SUPPER1-…">${esc(s.invite||'')}</textarea></label>
     <div class="notice"><b>What happens to what's on this phone</b>Your recipes are added to the household. The meal plan and grocery list on this phone are replaced by the household's.</div>
     <button class="btn primary" data-act="sync-join-go" ${s.busy?'disabled style="opacity:.6"':''}>${s.busy?'Connecting…':'Join household'}</button></div>`;
+}
+function draftFromParsed(p){const d=Object.assign(blankDraft(),p);
+      const hay=(p.title+' '+p.ing.map(i=>i.n).join(' ')).toLowerCase();
+      d.cat=/shrimp|salmon|fish|cod|tuna|scallop/.test(hay)?'fish':/beef|steak|lamb/.test(hay)?'red':/pork|bacon|sausage|ham\b/.test(hay)?'pork':/chicken|turkey/.test(hay)?'poultry':'vegetarian';
+      const al=[];if(/flour|bread|pasta|noodle|spaghetti|tortilla|soy sauce|linguine|penne/.test(hay))al.push('gluten');if(/milk|cream|butter|cheese|yogurt|parmesan/.test(hay))al.push('dairy');if(/\begg/.test(hay))al.push('egg');if(/soy/.test(hay))al.push('soy');if(/peanut/.test(hay))al.push('peanut');if(/almond|walnut|pecan|cashew|pistachio/.test(hay))al.push('treenut');if(/shrimp|crab|lobster|scallop/.test(hay))al.push('shellfish');if(/salmon|cod|tuna|fish/.test(hay))al.push('fish');if(/sesame|tahini/.test(hay))al.push('sesame');d.allergens=al;
+  return d;}
+function sheetLink(s){
+  if(!syncOn())return topBar('Import from a link','','Cancel')+`<div class="pad"><div class="card" style="margin-top:6px"><p>Link import uses your household sync server to read the recipe page, so turn on <b>Household sync</b> first.</p>
+    <button class="btn primary" style="margin-top:14px" data-act="link-to-sync">Go to Household sync</button></div></div>`;
+  return topBar('Import from a link','','Cancel')+`<div class="pad">
+    <p style="margin:6px 0 14px">In Safari, open the recipe and copy its web address (Share → Copy). Then paste it here.</p>
+    <label class="field"><span>Recipe web address</span><input class="input" id="linkUrl" inputmode="url" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="https://www.example.com/best-lasagna" value="${esc(s.url||'')}"></label>
+    ${s.err?`<div class="notice"><b>${esc(s.err[0])}</b>${esc(s.err[1])}${s.errPaste?' <button class="link" data-act="paste">Paste recipe text</button>':''}</div>`:''}
+    <div class="stack"><button class="btn primary" data-act="link-go" ${s.busy?'disabled style="opacity:.6"':''}>${s.busy?'Importing…':'Import recipe'}</button>
+    <button class="btn secondary" data-act="link-paste" ${s.busy?'disabled style="opacity:.6"':''}>Paste link from clipboard</button></div>
+    <p class="muted small" style="margin:16px 2px 0">Works with most recipe websites. You'll get to check everything before it's saved. Imported recipes are for your own use.</p></div>`;
+}
+async function pasteLink(){
+  try{const t=await navigator.clipboard.readText();const m=(t||'').match(/https?:\/\/\S+/i);
+    if(!m){toast('No web address on the clipboard');return;}
+    topSheet().url=m[0];renderSheets();importLink();}
+  catch(e){toast('Press and hold the box, then tap Paste');}
+}
+const LINK_ERRORS={
+  blocked:['That website blocked the import.','Some sites don\'t allow it. Open the recipe, copy its text, and paste it instead.',1],
+  not_recipe:['No recipe found on that page.','Make sure the link opens the recipe itself, not a list or article. Or copy the text and paste it instead.',1],
+  unreachable:['Couldn\'t open that page.','Check that the link is complete and the page loads in Safari.',0],
+  bad_url:['That doesn\'t look like a web address.','It should start with https://',0],
+};
+async function importLink(){
+  const s=topSheet();if(!s||s.type!=='link')return;
+  let url=($('#linkUrl')?$('#linkUrl').value:s.url||'').trim();
+  const found=url.match(/https?:\/\/\S+/i);if(found)url=found[0];else if(/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(url))url='https://'+url;
+  s.url=url;s.err=null;
+  if(!/^https?:\/\/[^\s/]+/i.test(url)){s.err=LINK_ERRORS.bad_url;s.errPaste=0;renderSheets();return;}
+  s.busy=true;renderSheets();
+  let data=null,status=0;
+  try{const ctl=new AbortController();const to=setTimeout(()=>ctl.abort(),25000);
+    const r=await fetch(serverUrl()+'/import',{method:'POST',headers:{'content-type':'text/plain;charset=UTF-8'},body:JSON.stringify({code:sync.code,url}),cache:'no-store',signal:ctl.signal});
+    clearTimeout(to);status=r.status;data=await r.json().catch(()=>null);}
+  catch(e){}
+  s.busy=false;
+  if(topSheet()!==s)return; // user left the screen
+  if(!data){s.err=['Couldn\'t reach your sync server.','Check your connection and try again.'];s.errPaste=0;renderSheets();return;}
+  if(status===404){s.err=['Your sync server needs an update.','Paste the latest worker.js into your Cloudflare Worker (Edit code → Deploy), then try again.'];s.errPaste=0;renderSheets();return;}
+  if(!data.ok){const e=LINK_ERRORS[data.error]||['Import didn\'t work.',String(data.error||'Unknown error')+'.',1];s.err=e;s.errPaste=e[2];renderSheets();return;}
+  const r=data.recipe;
+  const st=(r.steps||[]).map(t=>({t,timer:detectTimer(t)}));
+  const p={title:r.title||'Imported recipe',ing:(r.ingredients||[]).map(parseIngredient),steps:st,serves:r.serves||4,
+    time:r.time||Math.max(15,Math.round(st.reduce((a,x)=>a+x.timer,0)/60)+10)};
+  const d=draftFromParsed(p);d.source=r.source||url;if(r.description)d.notes=r.description;
+  sheets[sheets.length-1]={type:'edit',id:null,draft:d};renderSheets();
+  toast(`Imported ${p.ing.length} ingredients and ${st.length} steps. Check them, then save`);
 }
 function sheetDiet(){
   return topBar('Diet','','Done')+`<div class="pad">${dietOptions()}</div>`;
@@ -967,7 +1022,7 @@ function syncOn(){return !!(sync.url&&sync.code);}
 var lastP=null,syncBusy=false,syncAgain=false,syncT=null,pendingRender=false;
 
 function projection(){
-  const P={};const g=state.grocery;
+  const P={'m:household':'1'};const g=state.grocery; // marker so even an empty household exists on the server
   for(const r of state.custom)P['r:'+r.id]=JSON.stringify(r);
   for(const id of state.hidden)P['h:'+id]='1';
   for(const e of state.plan)P['p:'+e.id]=JSON.stringify({s:e.servings,c:!!e.cooked,a:e.added||0});
@@ -1134,14 +1189,15 @@ document.addEventListener('click',async e=>{
     case 'toggle-plan':e.stopPropagation();togglePlan(id,+el.dataset.serv||undefined);break;
     case 'filter':ui.filter=el.dataset.f;renderMain();break;
     case 'show-all':ui.showAll=!ui.showAll;$('#rgrid').innerHTML=recipeGrid();break;
-    case 'add-menu':actionSheet('Add a recipe',[{label:'Paste from a website',fn:()=>openSheet({type:'paste'})},{label:'Type it in',fn:()=>openSheet({type:'edit',id:null,draft:blankDraft()})}]);break;
+    case 'add-menu':actionSheet('Add a recipe',[{label:'Import from a link',fn:()=>openSheet({type:'link',url:''})},{label:'Paste recipe text',fn:()=>openSheet({type:'paste'})},{label:'Type it in',fn:()=>openSheet({type:'edit',id:null,draft:blankDraft()})}]);break;
     case 'new-recipe':openSheet({type:'edit',id:null,draft:blankDraft()});break;
     case 'paste':openSheet({type:'paste'});break;
-    case 'parse-paste':{const t=$('#pasteBox').value.trim();if(!t){toast('Paste a recipe first');break;}const p=parsePasted(t);const d=Object.assign(blankDraft(),p);
-      const hay=(p.title+' '+p.ing.map(i=>i.n).join(' ')).toLowerCase();
-      d.cat=/shrimp|salmon|fish|cod|tuna|scallop/.test(hay)?'fish':/beef|steak|lamb/.test(hay)?'red':/pork|bacon|sausage|ham\b/.test(hay)?'pork':/chicken|turkey/.test(hay)?'poultry':'vegetarian';
-      const al=[];if(/flour|bread|pasta|noodle|spaghetti|tortilla|soy sauce|linguine|penne/.test(hay))al.push('gluten');if(/milk|cream|butter|cheese|yogurt|parmesan/.test(hay))al.push('dairy');if(/\begg/.test(hay))al.push('egg');if(/soy/.test(hay))al.push('soy');if(/peanut/.test(hay))al.push('peanut');if(/almond|walnut|pecan|cashew|pistachio/.test(hay))al.push('treenut');if(/shrimp|crab|lobster|scallop/.test(hay))al.push('shellfish');if(/salmon|cod|tuna|fish/.test(hay))al.push('fish');if(/sesame|tahini/.test(hay))al.push('sesame');d.allergens=al;
-      sheets[sheets.length-1]={type:'edit',id:null,draft:d};renderSheets();toast('Check the details, then save');break;}
+    case 'parse-paste':{const t=$('#pasteBox').value.trim();if(!t){toast('Paste a recipe first');break;}
+      sheets[sheets.length-1]={type:'edit',id:null,draft:draftFromParsed(parsePasted(t))};renderSheets();toast('Check the details, then save');break;}
+    case 'link':openSheet({type:'link',url:''});break;
+    case 'link-paste':pasteLink();break;
+    case 'link-go':importLink();break;
+    case 'link-to-sync':while(sheets.length)sheets.pop();ui.tab='settings';refresh();setTimeout(()=>{const el=document.querySelector('[data-act=sync-start]');if(el)el.scrollIntoView({block:'center'});},50);break;
     case 'close':closeSheet();break;
     case 'fav':toggleFav(id);break;
     case 'recipe-menu':{const r=getRecipe(id);const items=[{label:r.custom?'Edit recipe':'Edit (saves your own copy)',fn:()=>editRecipe(id)},{label:'Share recipe',fn:()=>shareRecipe(r)}];
@@ -1204,6 +1260,7 @@ document.addEventListener('input',e=>{
   if(e.target.id==='q'){ui.q=e.target.value;$('#rgrid').innerHTML=recipeGrid();}
 });
 
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.id==='linkUrl'){e.preventDefault();importLink();}});
 async function shareList(){
   const text=groceryText();
   try{if(navigator.share){await navigator.share({title:'Grocery list',text});return;}}catch(e){if(e&&e.name==='AbortError')return;}
